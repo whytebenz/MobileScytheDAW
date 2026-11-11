@@ -1,0 +1,1162 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>REAPER Mobile - Adaptive DAW</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Phosphor Icons -->
+  <script src="https://unpkg.com/@phosphor-icons/web"></script>
+  <!-- Google Font -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            reaper: {
+              bg: '#181818',
+              surface: '#222222',
+              card: '#2a2a2a',
+              border: '#3a3a3a',
+              header: '#121212',
+              accent: '#e65100', // Reaper signature orange
+              accentHover: '#f57c00',
+              green: '#2e7d32',
+              red: '#c62828',
+              cyan: '#0288d1',
+              yellow: '#fbc02d'
+            }
+          },
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    /* Custom Scrollbars */
+    ::-webkit-scrollbar {
+      height: 5px;
+      width: 5px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #181818;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #444;
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #666;
+    }
+
+    .no-select {
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+
+    /* DAW Grid Patterns */
+    .arrange-grid {
+      background-size: 40px 100%;
+      background-image: linear-gradient(to right, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+    }
+    
+    .piano-grid {
+      background-size: 30px 24px;
+      background-image: 
+        linear-gradient(to right, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+    }
+
+    /* Glowing LED / Peak Meter Animation */
+    .meter-bar {
+      transition: height 0.08s ease-out;
+    }
+
+    /* Clip Dragging State Effects */
+    .clip-dragging {
+      opacity: 0.8;
+      z-index: 50 !important;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
+    }
+  </style>
+</head>
+<body class="bg-reaper-bg text-gray-200 font-sans antialiased h-screen flex flex-col overflow-hidden no-select">
+
+  <!-- APP HEADER / REAPER NAVBAR -->
+  <header class="bg-reaper-header border-b border-reaper-border px-3 py-2 flex items-center justify-between shrink-0 z-30 select-none">
+    <div class="flex items-center space-x-2">
+      <!-- Reaper Logo Icon -->
+      <div class="w-7 h-7 rounded-lg bg-gradient-to-tr from-reaper-accent to-amber-500 flex items-center justify-center text-white font-bold text-sm shadow-md shadow-reaper-accent/30">
+        <i class="ph-bold ph-wave-sine"></i>
+      </div>
+      <div class="flex flex-col">
+        <span class="font-bold text-xs sm:text-sm tracking-tight text-white leading-none flex items-center gap-1.5">
+          REAPER <span class="text-[10px] px-1.5 py-0.2 bg-reaper-accent/20 text-reaper-accent font-mono rounded">MOBILE</span>
+        </span>
+        <span id="project-info" class="text-[10px] text-gray-400 font-mono hidden sm:inline">Proj: New_Track_01.rpp</span>
+      </div>
+    </div>
+
+    <!-- Mode Display Status & Layout Toggle -->
+    <div class="flex items-center space-x-2">
+      <!-- Quad Cortex Mini USB Status Button -->
+      <button id="btn-qc-modal" class="px-2.5 py-1 rounded-lg bg-purple-900/40 border border-purple-700/60 hover:bg-purple-800/50 text-xs font-mono text-purple-300 flex items-center gap-1.5 transition shadow">
+        <i class="ph-bold ph-usb text-purple-400"></i>
+        <span class="hidden sm:inline">Quad Cortex USB</span>
+        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+      </button>
+
+      <button id="btn-screen-mode" class="px-2.5 py-1 rounded-lg bg-reaper-card border border-reaper-border hover:bg-gray-700 text-xs font-mono text-amber-400 flex items-center gap-1.5 transition">
+        <i class="ph-bold ph-device-mobile" id="screen-mode-icon"></i>
+        <span id="screen-mode-text">Cover Screen Mode</span>
+      </button>
+
+      <button id="btn-add-track" class="px-2.5 py-1 rounded-lg bg-reaper-accent hover:bg-reaper-accentHover text-white font-semibold text-xs flex items-center gap-1 shadow transition">
+        <i class="ph-bold ph-plus"></i>
+        <span class="hidden sm:inline">Add Track</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- QUAD CORTEX MINI USB ROUTING MODAL -->
+  <div id="qc-routing-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-reaper-surface border border-purple-500/40 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col">
+      <div class="bg-reaper-header border-b border-reaper-border px-4 py-3 flex items-center justify-between">
+        <div class="flex items-center space-x-2">
+          <div class="w-6 h-6 rounded bg-purple-600/30 text-purple-400 flex items-center justify-center">
+            <i class="ph-bold ph-cpu"></i>
+          </div>
+          <span class="text-sm font-bold text-white tracking-wide">Quad Cortex Mini - USB-C Hardware Routing</span>
+        </div>
+        <button id="close-qc-modal" class="text-gray-400 hover:text-white p-1 rounded-lg hover:bg-gray-800"><i class="ph-bold ph-x text-base"></i></button>
+      </div>
+
+      <div class="p-4 space-y-4 text-xs font-mono">
+        <div class="flex items-center justify-between bg-reaper-card p-2.5 rounded-xl border border-reaper-border">
+          <div class="flex items-center space-x-2">
+            <i class="ph-bold ph-plugs-connected text-emerald-400 text-base"></i>
+            <div>
+              <div class="font-bold text-gray-200">USB Audio Device Connected</div>
+              <div class="text-[10px] text-gray-400">Neural DSP Quad Cortex (Android USB Host 48kHz / 24-bit)</div>
+            </div>
+          </div>
+          <span class="px-2 py-0.5 rounded bg-emerald-900/40 text-emerald-400 text-[10px] font-bold">Active</span>
+        </div>
+
+        <div class="space-y-2">
+          <label class="text-gray-400 font-bold block uppercase tracking-wider text-[10px]">Hardware Input Channels (USB Capture)</label>
+          <div class="grid grid-cols-2 gap-2">
+            <div class="bg-reaper-card p-2.5 rounded-lg border border-purple-500/30 flex items-center justify-between">
+              <span>USB In 1/2 (Guitar In)</span>
+              <select id="qc-in-1" class="bg-reaper-surface text-gray-200 text-xs px-2 py-1 rounded border border-reaper-border focus:outline-none">
+                <option>Track 1 (Synth Lead)</option>
+                <option selected>Track 2 (Guitar Capture)</option>
+              </select>
+            </div>
+            <div class="bg-reaper-card p-2.5 rounded-lg border border-reaper-border flex items-center justify-between">
+              <span>USB In 3/4 (Stereo FX Loop)</span>
+              <select id="qc-in-3" class="bg-reaper-surface text-gray-200 text-xs px-2 py-1 rounded border border-reaper-border focus:outline-none">
+                <option>None</option>
+                <option>Track 3 (Drums)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="space-y-2">
+          <label class="text-gray-400 font-bold block uppercase tracking-wider text-[10px]">Hardware Output Channels (Re-amp & Monitoring)</label>
+          <div class="grid grid-cols-2 gap-2">
+            <div class="bg-reaper-card p-2.5 rounded-lg border border-reaper-border flex items-center justify-between">
+              <span>USB Out 1/2 (Main Out / Headphones)</span>
+              <span class="text-purple-400 font-bold">Master Bus</span>
+            </div>
+            <div class="bg-reaper-card p-2.5 rounded-lg border border-reaper-border flex items-center justify-between">
+              <span>USB Out 3/4 (Re-amp Send)</span>
+              <select id="qc-out-3" class="bg-reaper-surface text-gray-200 text-xs px-2 py-1 rounded border border-reaper-border focus:outline-none">
+                <option selected>Disabled</option>
+                <option>Track 1 Send</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-purple-950/30 border border-purple-800/40 p-3 rounded-xl text-purple-300 text-[11px] leading-relaxed flex items-start space-x-2">
+          <i class="ph-bold ph-info text-base shrink-0 mt-0.5"></i>
+          <div>Tip: Ensure your phone's OTG / USB debugging permissions are enabled. Quad Cortex Mini is operating in low-latency USB Audio Class 2.0 mode.</div>
+        </div>
+      </div>
+
+      <div class="bg-reaper-header border-t border-reaper-border px-4 py-2.5 flex justify-end">
+        <button id="btn-save-qc" class="px-4 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs transition">Apply & Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- REAPER TRANSPORT BAR (Always Accessible Top Bar) -->
+  <div class="bg-reaper-surface border-b border-reaper-border px-3 py-1.5 flex items-center justify-between gap-2 shrink-0 z-20">
+    <!-- Playback Controls -->
+    <div class="flex items-center space-x-1 sm:space-x-2">
+      <button id="btn-rewind" class="p-2 rounded-lg bg-reaper-card border border-reaper-border hover:bg-gray-700 text-gray-300 active:scale-95 transition">
+        <i class="ph-bold ph-rewind text-sm"></i>
+      </button>
+      <button id="btn-play" class="px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1 shadow active:scale-95 transition">
+        <i class="ph-bold ph-play text-sm"></i>
+      </button>
+      <button id="btn-pause" class="p-2 rounded-lg bg-reaper-card border border-reaper-border hover:bg-gray-700 text-gray-300 active:scale-95 transition">
+        <i class="ph-bold ph-pause text-sm"></i>
+      </button>
+      <button id="btn-stop" class="p-2 rounded-lg bg-reaper-card border border-reaper-border hover:bg-gray-700 text-gray-300 active:scale-95 transition">
+        <i class="ph-bold ph-square text-sm"></i>
+      </button>
+      <button id="btn-record" class="p-2 rounded-lg bg-red-900/60 border border-red-700/80 text-red-400 hover:bg-red-800/80 active:scale-95 transition" title="Arm / Record">
+        <i class="ph-bold ph-record text-sm" id="rec-icon"></i>
+      </button>
+    </div>
+
+    <!-- Time Counter / LCD Screen -->
+    <div class="bg-black/80 border border-reaper-border px-3 py-1 rounded-lg font-mono text-center flex items-center space-x-3">
+      <div class="flex flex-col items-start">
+        <span class="text-[9px] text-gray-500 font-semibold tracking-wider">TIME</span>
+        <span id="display-time" class="text-xs sm:text-sm font-bold text-emerald-400">00:00:00</span>
+      </div>
+      <div class="h-6 w-[1px] bg-gray-800"></div>
+      <div class="flex flex-col items-start">
+        <span class="text-[9px] text-gray-500 font-semibold tracking-wider">MEASURE</span>
+        <span id="display-beat" class="text-xs sm:text-sm font-bold text-amber-400">001.1.00</span>
+      </div>
+    </div>
+
+    <!-- Tempo & Metronome -->
+    <div class="flex items-center space-x-2">
+      <div class="flex items-center space-x-1 bg-reaper-card px-2 py-1 rounded-lg border border-reaper-border">
+        <span class="text-[10px] text-gray-400 font-bold">BPM</span>
+        <input type="number" id="bpm-val" value="120" min="40" max="280" class="w-10 bg-transparent text-xs font-mono font-bold text-amber-400 text-center focus:outline-none">
+      </div>
+      <button id="btn-metro" class="p-2 rounded-lg bg-reaper-card border border-reaper-border text-gray-400 hover:text-white transition" title="Toggle Metronome">
+        <i class="ph-bold ph-metronome text-sm"></i>
+      </button>
+    </div>
+  </div>
+
+  <!-- MAIN WORKSPACE CONTAINER (Adapts dynamically to Cover Screen vs Expanded Inner Screen) -->
+  <div id="main-workspace" class="flex-1 flex flex-col md:flex-row overflow-hidden relative">
+    
+    <!-- LEFT SIDE: TRACK CONTROL PANELS (TCP) -->
+    <section id="tcp-panel" class="w-full md:w-80 bg-reaper-surface border-r border-reaper-border flex flex-col overflow-y-auto shrink-0 z-10 transition-all duration-300">
+      <div class="px-3 py-2 bg-reaper-header border-b border-reaper-border flex items-center justify-between">
+        <span class="text-xs font-bold uppercase tracking-wider text-gray-400 flex items-center gap-1.5">
+          <i class="ph-bold ph-sliders-horizontal text-reaper-accent"></i> Track Control Panel
+        </span>
+        <span id="track-count-badge" class="text-[10px] font-mono bg-reaper-card px-2 py-0.5 rounded text-gray-400">3 Tracks</span>
+      </div>
+
+      <!-- Tracks Container -->
+      <div id="track-list" class="flex-1 divide-y divide-reaper-border overflow-y-auto">
+        <!-- Rendered dynamically -->
+      </div>
+    </section>
+
+    <!-- RIGHT SIDE: ARRANGE VIEW / PIANO ROLL EDITOR -->
+    <section id="arrange-panel" class="flex-1 flex flex-col bg-reaper-bg overflow-hidden relative">
+      
+      <!-- View Switcher Tabs (Arrange vs Piano Roll vs FX Chain) -->
+      <div class="bg-reaper-surface border-b border-reaper-border px-3 py-1 flex items-center justify-between shrink-0">
+        <div class="flex items-center space-x-1">
+          <button id="tab-arrange" class="px-3 py-1 rounded-t-lg bg-reaper-bg border-t border-x border-reaper-border text-xs font-bold text-amber-400 flex items-center gap-1.5">
+            <i class="ph-bold ph-waveform"></i> Arrange Timeline
+          </button>
+          <button id="tab-pianoroll" class="px-3 py-1 rounded-t-lg bg-reaper-card text-xs font-semibold text-gray-400 hover:text-gray-200 flex items-center gap-1.5 transition">
+            <i class="ph-bold ph-piano-keys"></i> Piano Roll MIDI
+          </button>
+          <button id="tab-mixer" class="px-3 py-1 rounded-t-lg bg-reaper-card text-xs font-semibold text-gray-400 hover:text-gray-200 flex items-center gap-1.5 transition">
+            <i class="ph-bold ph-equalizer"></i> FX & Mixer
+          </button>
+        </div>
+
+        <!-- Timeline Zoom Controls -->
+        <div class="flex items-center space-x-1">
+          <button id="btn-zoom-out" class="p-1 rounded bg-reaper-card text-gray-400 hover:text-white text-xs"><i class="ph-bold ph-magnifying-glass-minus"></i></button>
+          <button id="btn-zoom-in" class="p-1 rounded bg-reaper-card text-gray-400 hover:text-white text-xs"><i class="ph-bold ph-magnifying-glass-plus"></i></button>
+        </div>
+      </div>
+
+      <!-- VIEW 1: ARRANGE TIMELINE -->
+      <div id="view-arrange" class="flex-1 flex flex-col overflow-hidden relative arrange-grid select-none cursor-pointer">
+        <!-- Timeline Ruler Header -->
+        <div id="timeline-ruler" class="h-6 bg-reaper-header border-b border-reaper-border flex items-center font-mono text-[10px] text-gray-500 pl-2 shrink-0 select-none cursor-ew-resize">
+          <div class="w-16">01.00</div>
+          <div class="w-16">02.00</div>
+          <div class="w-16">03.00</div>
+          <div class="w-16">04.00</div>
+          <div class="w-16">05.00</div>
+          <div class="w-16">06.00</div>
+          <div class="w-16">07.00</div>
+          <div class="w-16">08.00</div>
+        </div>
+
+        <!-- Playhead Scrub Line -->
+        <div id="playhead" class="absolute top-0 bottom-0 left-[0%] w-[2px] bg-red-500 shadow-md z-20 pointer-events-none">
+          <div class="w-3 h-3 bg-red-500 rounded-full -ml-[5px] -mt-1 shadow"></div>
+        </div>
+
+        <!-- Tracks Item Display Area -->
+        <div id="arrange-tracks-container" class="flex-1 overflow-y-auto divide-y divide-reaper-border/50">
+          <!-- Item lanes rendered dynamically to sync with TCP tracks -->
+        </div>
+      </div>
+
+      <!-- VIEW 2: PIANO ROLL EDITOR (Hidden by default) -->
+      <div id="view-pianoroll" class="flex-1 flex overflow-hidden relative hidden bg-[#1a1a1a]">
+        <!-- Piano Keyboard Keys -->
+        <div id="piano-keys-lane" class="w-14 bg-reaper-header border-r border-reaper-border flex flex-col shrink-0 select-none font-mono text-[9px] text-gray-400">
+          <!-- Keys populated via JS -->
+        </div>
+
+        <!-- MIDI Note Canvas Grid -->
+        <div id="piano-roll-grid" class="flex-1 overflow-auto piano-grid relative cursor-crosshair">
+          <!-- MIDI Notes rendered dynamically -->
+        </div>
+      </div>
+
+      <!-- VIEW 3: MIXER & FX CHAIN (Hidden by default) -->
+      <div id="view-mixer" class="flex-1 p-4 bg-reaper-bg overflow-y-auto hidden">
+        <h3 class="text-xs font-bold uppercase text-gray-400 mb-3 flex items-center gap-1.5">
+          <i class="ph-bold ph-sliders"></i> REAPER Master Rack & Track FX Chains
+        </h3>
+        
+        <div id="mixer-strips-container" class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <!-- Channel Strips generated dynamically -->
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <!-- REAPER BOTTOM STATUS BAR -->
+  <footer class="bg-reaper-header border-t border-reaper-border px-3 py-1.5 flex items-center justify-between text-[11px] font-mono text-gray-400 shrink-0 z-20">
+    <div class="flex items-center space-x-3">
+      <span class="flex items-center gap-1 text-emerald-400"><i class="ph-fill ph-circle text-[8px]"></i> Audio Engine: 48kHz 24bit</span>
+      <span class="hidden sm:inline text-gray-500">|</span>
+      <span class="hidden sm:inline">DSP Load: <span id="dsp-load">2.4%</span></span>
+    </div>
+    <div class="flex items-center space-x-2">
+      <span class="text-gray-400">Optimized for Flip/Foldable Devices</span>
+    </div>
+  </footer>
+
+  <!-- JAVASCRIPT DAW ENGINE -->
+  <script>
+    // --- DAW AUDIO ENGINE & STATE ---
+    let audioCtx = null;
+    let isPlaying = false;
+    let isRecording = false;
+    let isMetronomeOn = false;
+    let bpm = 120;
+    let playheadPosition = 0; // percentage position 0-100
+    let playheadInterval = null;
+    let isCoverScreenMode = false;
+    let zoomLevel = 100;
+
+    // Track State Store
+    let tracks = [
+      { id: 1, name: 'Synth Lead', color: '#e65100', volume: 80, pan: 0, muted: false, soloed: false, arm: true, type: 'synth' },
+      { id: 2, name: 'Quad Cortex Guitar', color: '#a855f7', volume: 85, pan: 0, muted: false, soloed: false, arm: true, type: 'bass' },
+      { id: 3, name: 'Drums', color: '#2e7d32', volume: 90, pan: 0, muted: false, soloed: false, arm: false, type: 'drums' }
+    ];
+
+    // Arrangement Clips Store (allows clips to move between tracks and resize independently)
+    let clips = [
+      { id: 101, trackId: 1, name: 'Synth_Take01.wav', startPct: 10, widthPct: 35 },
+      { id: 102, trackId: 2, name: 'Bass_Groove.wav', startPct: 5, widthPct: 45 },
+      { id: 103, trackId: 3, name: 'Beat_Pattern.wav', startPct: 0, widthPct: 60 }
+    ];
+
+    let midiNotes = [
+      { pitch: 60, start: 10, duration: 15 },
+      { pitch: 64, start: 30, duration: 15 },
+      { pitch: 67, start: 50, duration: 20 },
+      { pitch: 72, start: 75, duration: 15 }
+    ];
+
+    function initAudio() {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+    }
+
+    // Play Synth Note using Web Audio API
+    function triggerNoteSound(pitch = 60, duration = 0.2, type = 'synth') {
+      initAudio();
+      if (!audioCtx) return;
+
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+
+      const freq = 440 * Math.pow(2, (pitch - 69) / 12);
+      osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+
+      if (type === 'bass') {
+        osc.type = 'sawtooth';
+      } else if (type === 'drums') {
+        osc.type = 'square';
+      } else {
+        osc.type = 'triangle';
+      }
+
+      gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+
+      osc.start();
+      osc.stop(audioCtx.currentTime + duration);
+    }
+
+    function playMetronomeClick() {
+      if (!isMetronomeOn) return;
+      initAudio();
+      if (!audioCtx) return;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.frequency.setValueAtTime(1000, audioCtx.currentTime);
+      gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.05);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.05);
+    }
+
+    // Initialize UI Component Rendering
+    function initDAW() {
+      renderTracks();
+      renderArrangeLanes();
+      renderPianoKeys();
+      renderPianoNotes();
+      renderMixerStrips();
+
+      setupEventListeners();
+      checkDeviceOrientation();
+    }
+
+    // --- TRACK CONTROL PANEL RENDERER (TCP) ---
+    function renderTracks() {
+      const trackList = document.getElementById('track-list');
+      const trackCountBadge = document.getElementById('track-count-badge');
+      if (!trackList) return;
+
+      trackList.innerHTML = '';
+      if (trackCountBadge) trackCountBadge.textContent = `${tracks.length} Tracks`;
+
+      tracks.forEach((track, idx) => {
+        const item = document.createElement('div');
+        item.className = `p-2.5 bg-reaper-surface hover:bg-reaper-card transition flex flex-col space-y-2 border-l-4`;
+        item.style.borderColor = track.color;
+
+        item.innerHTML = `
+          <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-2">
+              <span class="text-mono font-bold text-xs text-gray-400">${idx + 1}</span>
+              <input type="text" value="${track.name}" class="track-name-input bg-transparent text-xs font-bold text-gray-200 border-b border-transparent hover:border-gray-600 focus:border-reaper-accent focus:outline-none w-24 sm:w-32" data-id="${track.id}">
+            </div>
+            
+            <!-- Mute / Solo / Rec Arm Controls -->
+            <div class="flex items-center space-x-1">
+              <button class="btn-arm text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border transition ${track.arm ? 'bg-red-600 border-red-500 text-white' : 'bg-reaper-card border-reaper-border text-gray-400'}" data-id="${track.id}">R</button>
+              <button class="btn-mute text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border transition ${track.muted ? 'bg-amber-600 border-amber-500 text-white' : 'bg-reaper-card border-reaper-border text-gray-400'}" data-id="${track.id}">M</button>
+              <button class="btn-solo text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border transition ${track.soloed ? 'bg-yellow-600 border-yellow-500 text-white' : 'bg-reaper-card border-reaper-border text-gray-400'}" data-id="${track.id}">S</button>
+              <button class="btn-del-track text-gray-500 hover:text-red-400 text-xs pl-1" data-id="${track.id}"><i class="ph-bold ph-trash"></i></button>
+            </div>
+          </div>
+
+          <!-- Fader Sliders & Peak VU Meter -->
+          <div class="flex items-center space-x-2 pt-1">
+            <i class="ph-bold ph-speaker-high text-xs text-gray-400"></i>
+            <input type="range" min="0" max="100" value="${track.volume}" class="track-vol-slider w-full accent-reaper-accent h-1.5 bg-gray-700 rounded cursor-pointer" data-id="${track.id}">
+            
+            <!-- Dynamic LED VU Peak Meter -->
+            <div class="w-3 h-5 bg-black rounded border border-gray-800 flex flex-col justify-end p-0.5 shrink-0 overflow-hidden">
+              <div class="meter-bar w-full bg-emerald-500 rounded-sm" style="height: ${track.muted ? '0%' : Math.floor(Math.random() * 60 + 20) + '%'};"></div>
+            </div>
+          </div>
+        `;
+
+        trackList.appendChild(item);
+      });
+
+      // Bind Track control events
+      document.querySelectorAll('.track-name-input').forEach(input => {
+        input.addEventListener('change', (e) => {
+          const id = parseInt(e.target.dataset.id);
+          const trk = tracks.find(t => t.id === id);
+          if (trk) {
+            trk.name = e.target.value;
+            renderArrangeLanes();
+            renderMixerStrips();
+          }
+        });
+      });
+
+      document.querySelectorAll('.track-vol-slider').forEach(slider => {
+        slider.addEventListener('input', (e) => {
+          const id = parseInt(e.target.dataset.id);
+          const trk = tracks.find(t => t.id === id);
+          if (trk) {
+            trk.volume = parseInt(e.target.value);
+            renderMixerStrips();
+          }
+        });
+      });
+
+      document.querySelectorAll('.btn-arm').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const id = parseInt(e.currentTarget.dataset.id);
+          const trk = tracks.find(t => t.id === id);
+          if (trk) { trk.arm = !trk.arm; renderTracks(); }
+        });
+      });
+
+      document.querySelectorAll('.btn-mute').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const id = parseInt(e.currentTarget.dataset.id);
+          const trk = tracks.find(t => t.id === id);
+          if (trk) { trk.muted = !trk.muted; renderTracks(); renderArrangeLanes(); }
+        });
+      });
+
+      document.querySelectorAll('.btn-solo').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const id = parseInt(e.currentTarget.dataset.id);
+          const trk = tracks.find(t => t.id === id);
+          if (trk) { trk.soloed = !trk.soloed; renderTracks(); }
+        });
+      });
+
+      document.querySelectorAll('.btn-del-track').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const id = parseInt(e.currentTarget.dataset.id);
+          tracks = tracks.filter(t => t.id !== id);
+          renderTracks();
+          renderArrangeLanes();
+          renderMixerStrips();
+        });
+      });
+    }
+
+    // --- ARRANGE TIMELINE LANES ---
+    function renderArrangeLanes() {
+      const container = document.getElementById('arrange-tracks-container');
+      if (!container) return;
+
+      container.innerHTML = '';
+
+      tracks.forEach((track) => {
+        const lane = document.createElement('div');
+        lane.className = `h-16 flex items-center relative border-b border-reaper-border/40 track-lane ${track.muted ? 'opacity-40' : ''}`;
+        lane.dataset.trackId = track.id;
+
+        // Render clips assigned to this track lane
+        const trackClips = clips.filter(c => c.trackId === track.id);
+        
+        trackClips.forEach(clip => {
+          const itemBlock = document.createElement('div');
+          itemBlock.className = `h-11 rounded-lg border flex items-center justify-between px-2 font-mono text-xs font-bold text-white shadow absolute cursor-grab active:cursor-grabbing select-none overflow-hidden clip-item`;
+          itemBlock.style.backgroundColor = `${track.color}44`;
+          itemBlock.style.borderColor = track.color;
+          itemBlock.style.left = `${clip.startPct}%`;
+          itemBlock.style.width = `${clip.widthPct * (zoomLevel / 100)}%`;
+          itemBlock.dataset.clipId = clip.id;
+
+          itemBlock.innerHTML = `
+            <div class="flex items-center truncate pointer-events-none pr-1">
+              <i class="ph-bold ph-waveform mr-1.5 text-sm shrink-0"></i>
+              <span class="truncate">${clip.name}</span>
+            </div>
+            
+            <!-- Simulated Waveform lines -->
+            <div class="absolute inset-0 flex items-center justify-around opacity-25 pointer-events-none px-4">
+              <div class="w-1 h-6 bg-white rounded"></div>
+              <div class="w-1 h-8 bg-white rounded"></div>
+              <div class="w-1 h-4 bg-white rounded"></div>
+              <div class="w-1 h-9 bg-white rounded"></div>
+              <div class="w-1 h-5 bg-white rounded"></div>
+              <div class="w-1 h-7 bg-white rounded"></div>
+            </div>
+
+            <!-- Right Edge Resize Handle -->
+            <div class="resize-handle w-3 top-0 bottom-0 right-0 absolute cursor-ew-resize hover:bg-white/30 z-30 flex items-center justify-center">
+              <div class="w-1 h-4 bg-white/60 rounded-full"></div>
+            </div>
+          `;
+
+          // Handle single click audio feedback
+          itemBlock.addEventListener('click', (e) => {
+            if (e.defaultPrevented) return;
+            triggerNoteSound(60, 0.4, track.type);
+          });
+
+          lane.appendChild(itemBlock);
+        });
+
+        container.appendChild(lane);
+      });
+
+      setupClipDragAndResize();
+    }
+
+    // --- CLIP DRAGGING & RESIZING INTERACTION ENGINE ---
+    function setupClipDragAndResize() {
+      const container = document.getElementById('arrange-tracks-container');
+      if (!container) return;
+
+      let activeClipEl = null;
+      let activeClipObj = null;
+      let isResizing = false;
+      let startX = 0;
+      let initialStartPct = 0;
+      let initialWidthPct = 0;
+      let containerWidth = 1;
+
+      function onPointerDown(e) {
+        const resizeHandle = e.target.closest('.resize-handle');
+        const clipEl = e.target.closest('.clip-item');
+        
+        if (!clipEl) return;
+        e.stopPropagation();
+
+        const clipId = parseInt(clipEl.dataset.clipId);
+        activeClipObj = clips.find(c => c.id === clipId);
+        if (!activeClipObj) return;
+
+        activeClipEl = clipEl;
+        const rect = container.getBoundingClientRect();
+        containerWidth = rect.width;
+        startX = e.touches ? e.touches[0].clientX : e.clientX;
+        initialStartPct = activeClipObj.startPct;
+        initialWidthPct = activeClipObj.widthPct;
+
+        if (resizeHandle) {
+          isResizing = true;
+        } else {
+          isResizing = false;
+          activeClipEl.classList.add('clip-dragging');
+        }
+
+        window.addEventListener('mousemove', onPointerMove);
+        window.addEventListener('mouseup', onPointerUp);
+        window.addEventListener('touchmove', onPointerMove, { passive: false });
+        window.addEventListener('touchend', onPointerUp);
+      }
+
+      function onPointerMove(e) {
+        if (!activeClipEl || !activeClipObj) return;
+        if (e.cancelable) e.preventDefault();
+
+        const currentX = e.touches ? e.touches[0].clientX : e.clientX;
+        const deltaX = currentX - startX;
+        const deltaPct = (deltaX / containerWidth) * 100;
+
+        if (isResizing) {
+          // Resize Clip Length (Width)
+          const newWidth = Math.max(5, initialWidthPct + (deltaPct / (zoomLevel / 100)));
+          activeClipObj.widthPct = newWidth;
+          activeClipEl.style.width = `${newWidth * (zoomLevel / 100)}%`;
+        } else {
+          // Move Clip Position & Lane Switching
+          const newStart = Math.max(0, initialStartPct + deltaPct);
+          activeClipObj.startPct = newStart;
+          activeClipEl.style.left = `${newStart}%`;
+
+          // Track switching detection based on cursor Y position
+          const currentY = e.touches ? e.touches[0].clientY : e.clientY;
+          const lanes = document.querySelectorAll('.track-lane');
+          lanes.forEach(lane => {
+            const laneRect = lane.getBoundingClientRect();
+            if (currentY >= laneRect.top && currentY <= laneRect.bottom) {
+              const targetTrackId = parseInt(lane.dataset.trackId);
+              if (activeClipObj.trackId !== targetTrackId) {
+                activeClipObj.trackId = targetTrackId;
+                const targetTrack = tracks.find(t => t.id === targetTrackId);
+                if (targetTrack) {
+                  activeClipEl.style.backgroundColor = `${targetTrack.color}44`;
+                  activeClipEl.style.borderColor = targetTrack.color;
+                }
+              }
+            }
+          });
+        }
+      }
+
+      function onPointerUp(e) {
+        if (activeClipEl) {
+          activeClipEl.classList.remove('clip-dragging');
+        }
+        activeClipEl = null;
+        activeClipObj = null;
+        isResizing = false;
+
+        window.removeEventListener('mousemove', onPointerMove);
+        window.removeEventListener('mouseup', onPointerUp);
+        window.removeEventListener('touchmove', onPointerMove);
+        window.removeEventListener('touchend', onPointerUp);
+
+        // Re-render to finalize lane positions and hierarchy
+        renderArrangeLanes();
+      }
+
+      container.onmousedown = onPointerDown;
+      container.ontouchstart = onPointerDown;
+    }
+
+    // --- PIANO ROLL KEYBOARD & MIDI NOTES ---
+    function renderPianoKeys() {
+      const lane = document.getElementById('piano-keys-lane');
+      if (!lane) return;
+
+      lane.innerHTML = '';
+      const notes = ['C', 'B', 'A', 'G', 'F', 'E', 'D'];
+
+      for (let octave = 5; octave >= 3; octave--) {
+        notes.forEach(n => {
+          const key = document.createElement('div');
+          key.className = `h-6 border-b border-reaper-border px-1 flex items-center justify-between font-mono text-[9px] cursor-pointer hover:bg-reaper-card ${n.includes('#') ? 'bg-black text-gray-400' : 'bg-reaper-surface text-gray-300'}`;
+          key.textContent = `${n}${octave}`;
+
+          key.addEventListener('click', () => {
+            const pitchMap = { 'C':60, 'D':62, 'E':64, 'F':65, 'G':67, 'A':69, 'B':71 };
+            triggerNoteSound(pitchMap[n] || 60, 0.3);
+          });
+
+          lane.appendChild(key);
+        });
+      }
+    }
+
+    function renderPianoNotes() {
+      const grid = document.getElementById('piano-roll-grid');
+      if (!grid) return;
+
+      grid.innerHTML = '';
+
+      // Render MIDI Note blocks
+      midiNotes.forEach((note, idx) => {
+        const noteEl = document.createElement('div');
+        noteEl.className = 'absolute h-5 bg-amber-500 border border-amber-300 rounded text-[9px] font-mono font-bold text-black flex items-center justify-between px-1 shadow cursor-pointer';
+        noteEl.style.left = `${note.start * 4}px`;
+        noteEl.style.top = `${(72 - note.pitch) * 24}px`;
+        noteEl.style.width = `${note.duration * 4}px`;
+        noteEl.innerHTML = `<span>N:${note.pitch}</span><i class="ph-bold ph-x hover:text-red-700 btn-del-note" data-idx="${idx}"></i>`;
+
+        noteEl.addEventListener('click', (e) => {
+          if (e.target.classList.contains('btn-del-note')) {
+            e.stopPropagation();
+            midiNotes.splice(idx, 1);
+            renderPianoNotes();
+            return;
+          }
+          e.stopPropagation();
+          triggerNoteSound(note.pitch, 0.4);
+        });
+
+        grid.appendChild(noteEl);
+      });
+
+      // Click Grid to Add Note
+      grid.onclick = (e) => {
+        if (e.target !== grid) return;
+        const rect = grid.getBoundingClientRect();
+        const clickX = e.clientX - rect.left;
+        const clickY = e.clientY - rect.top;
+
+        const pitch = 72 - Math.floor(clickY / 24);
+        const start = Math.floor(clickX / 4);
+
+        midiNotes.push({ pitch, start, duration: 15 });
+        triggerNoteSound(pitch, 0.3);
+        renderPianoNotes();
+      };
+    }
+
+    // --- MIXER & FX RACK STRIPS ---
+    function renderMixerStrips() {
+      const container = document.getElementById('mixer-strips-container');
+      if (!container) return;
+
+      container.innerHTML = '';
+
+      tracks.forEach(track => {
+        const strip = document.createElement('div');
+        strip.className = 'bg-reaper-surface border border-reaper-border rounded-xl p-3 flex flex-col items-center space-y-3 shadow-md';
+
+        strip.innerHTML = `
+          <div class="text-xs font-bold text-gray-200 truncate w-full text-center" style="color: ${track.color}">${track.name}</div>
+          
+          <!-- FX Chain Slots -->
+          <div class="w-full bg-black/60 border border-reaper-border rounded-lg p-1.5 space-y-1 font-mono text-[9px]">
+            <div class="bg-reaper-card px-1.5 py-0.5 rounded text-emerald-400 flex justify-between items-center">
+              <span>EQ-ReaEQ</span>
+              <button class="toggle-fx text-emerald-400 hover:text-red-400"><i class="ph-bold ph-power"></i></button>
+            </div>
+            <div class="bg-reaper-card px-1.5 py-0.5 rounded text-cyan-400 flex justify-between items-center">
+              <span>ReaComp</span>
+              <button class="toggle-fx text-cyan-400 hover:text-red-400"><i class="ph-bold ph-power"></i></button>
+            </div>
+            <button class="btn-add-fx w-full bg-reaper-card/40 hover:bg-reaper-card px-1.5 py-0.5 rounded text-gray-500 hover:text-gray-300 text-left transition">+ Add FX</button>
+          </div>
+
+          <!-- Volume Fader -->
+          <div class="h-32 flex items-center space-x-2">
+            <input type="range" min="0" max="100" value="${track.volume}" orient="vertical" class="mixer-vol-fader h-full accent-reaper-accent cursor-pointer" data-id="${track.id}">
+          </div>
+
+          <span class="mixer-vol-val font-mono text-xs font-bold text-amber-400">${track.volume} dB</span>
+        `;
+
+        container.appendChild(strip);
+      });
+
+      // Bind Volume & FX events
+      container.querySelectorAll('.mixer-vol-fader').forEach(fader => {
+        fader.addEventListener('input', (e) => {
+          const id = parseInt(e.target.dataset.id);
+          const trk = tracks.find(t => t.id === id);
+          if (trk) {
+            trk.volume = parseInt(e.target.value);
+            const valSpan = e.target.parentElement.parentElement.querySelector('.mixer-vol-val');
+            if (valSpan) valSpan.textContent = `${trk.volume} dB`;
+            renderTracks();
+          }
+        });
+      });
+
+      container.querySelectorAll('.btn-add-fx').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const fxNames = ['ReaDelay', 'ReaVerb', 'ReaPitch', 'ReaGate'];
+          const randomFx = fxNames[Math.floor(Math.random() * fxNames.length)];
+          const fxSlot = document.createElement('div');
+          fxSlot.className = 'bg-reaper-card px-1.5 py-0.5 rounded text-amber-400 flex justify-between items-center';
+          fxSlot.innerHTML = `<span>${randomFx}</span><button class="toggle-fx text-amber-400 hover:text-red-400"><i class="ph-bold ph-power"></i></button>`;
+          e.target.parentElement.insertBefore(fxSlot, e.target);
+          
+          fxSlot.querySelector('.toggle-fx').addEventListener('click', (ev) => {
+            fxSlot.classList.toggle('opacity-40');
+          });
+        });
+      });
+
+      container.querySelectorAll('.toggle-fx').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const parent = e.currentTarget.parentElement;
+          parent.classList.toggle('opacity-40');
+        });
+      });
+    }
+
+    // --- EVENT LISTENERS & TRANSPORT CONTROL ---
+    function setupEventListeners() {
+      const playBtn = document.getElementById('btn-play');
+      const pauseBtn = document.getElementById('btn-pause');
+      const stopBtn = document.getElementById('btn-stop');
+      const rewindBtn = document.getElementById('btn-rewind');
+      const recordBtn = document.getElementById('btn-record');
+      const metroBtn = document.getElementById('btn-metro');
+      const bpmInput = document.getElementById('bpm-val');
+      const zoomInBtn = document.getElementById('btn-zoom-in');
+      const zoomOutBtn = document.getElementById('btn-zoom-out');
+
+      // Quad Cortex Modal Event Listeners
+      const qcModal = document.getElementById('qc-routing-modal');
+      const btnQcModal = document.getElementById('btn-qc-modal');
+      const closeQcModal = document.getElementById('close-qc-modal');
+      const saveQcBtn = document.getElementById('btn-save-qc');
+
+      if (btnQcModal && qcModal) {
+        btnQcModal.addEventListener('click', () => { qcModal.classList.remove('hidden'); });
+      }
+      if (closeQcModal && qcModal) {
+        closeQcModal.addEventListener('click', () => { qcModal.classList.add('hidden'); });
+      }
+      if (saveQcBtn && qcModal) {
+        saveQcBtn.addEventListener('click', () => { qcModal.classList.add('hidden'); });
+      }
+
+      if (playBtn) {
+        playBtn.addEventListener('click', () => {
+          initAudio();
+          isPlaying = true;
+          clearInterval(playheadInterval);
+          playheadInterval = setInterval(() => {
+            playheadPosition = (playheadPosition + 0.5) % 100;
+            updatePlayheadPosition(playheadPosition);
+            if (Math.floor(playheadPosition) % 5 === 0) {
+              playMetronomeClick();
+            }
+          }, 60000 / (bpm * 8));
+        });
+      }
+
+      if (pauseBtn) {
+        pauseBtn.addEventListener('click', () => {
+          isPlaying = false;
+          clearInterval(playheadInterval);
+        });
+      }
+
+      if (stopBtn) {
+        stopBtn.addEventListener('click', () => {
+          isPlaying = false;
+          isRecording = false;
+          const recIcon = document.getElementById('rec-icon');
+          if (recIcon) recIcon.classList.remove('animate-pulse');
+          clearInterval(playheadInterval);
+          playheadPosition = 0;
+          updatePlayheadPosition(0);
+        });
+      }
+
+      if (rewindBtn) {
+        rewindBtn.addEventListener('click', () => {
+          playheadPosition = 0;
+          updatePlayheadPosition(0);
+        });
+      }
+
+      if (recordBtn) {
+        recordBtn.addEventListener('click', () => {
+          initAudio();
+          isRecording = !isRecording;
+          const recIcon = document.getElementById('rec-icon');
+          if (isRecording) {
+            recordBtn.classList.add('bg-red-600');
+            if (recIcon) recIcon.classList.add('animate-pulse');
+            isPlaying = true;
+            clearInterval(playheadInterval);
+            playheadInterval = setInterval(() => {
+              playheadPosition = (playheadPosition + 0.5) % 100;
+              updatePlayheadPosition(playheadPosition);
+            }, 60000 / (bpm * 8));
+          } else {
+            recordBtn.classList.remove('bg-red-600');
+            if (recIcon) recIcon.classList.remove('animate-pulse');
+          }
+        });
+      }
+
+      if (metroBtn) {
+        metroBtn.addEventListener('click', () => {
+          isMetronomeOn = !isMetronomeOn;
+          metroBtn.classList.toggle('text-amber-400');
+          metroBtn.classList.toggle('text-gray-400');
+          if (isMetronomeOn) playMetronomeClick();
+        });
+      }
+
+      if (bpmInput) {
+        bpmInput.addEventListener('change', (e) => {
+          bpm = Math.max(40, Math.min(280, parseInt(e.target.value) || 120));
+          e.target.value = bpm;
+        });
+      }
+
+      if (zoomInBtn) {
+        zoomInBtn.addEventListener('click', () => {
+          zoomLevel = Math.min(200, zoomLevel + 20);
+          renderArrangeLanes();
+        });
+      }
+
+      if (zoomOutBtn) {
+        zoomOutBtn.addEventListener('click', () => {
+          zoomLevel = Math.max(50, zoomLevel - 20);
+          renderArrangeLanes();
+        });
+      }
+
+      // --- TIMELINE SCRUBBING / CURSOR DRAGGING ---
+      const viewArrange = document.getElementById('view-arrange');
+      let isScrubbing = false;
+
+      function updatePlayheadFromEvent(e) {
+        if (!viewArrange) return;
+        const rect = viewArrange.getBoundingClientRect();
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        let offsetX = clientX - rect.left;
+        
+        // Clamp bounds 0 to 100%
+        offsetX = Math.max(0, Math.min(offsetX, rect.width));
+        const pct = (offsetX / rect.width) * 100;
+        playheadPosition = pct;
+        updatePlayheadPosition(pct);
+      }
+
+      if (viewArrange) {
+        viewArrange.addEventListener('mousedown', (e) => {
+          // Allow clicking items without scrubbing if clicked on item block
+          if (e.target.closest('#arrange-tracks-container .cursor-pointer')) return;
+          isScrubbing = true;
+          updatePlayheadFromEvent(e);
+        });
+
+        window.addEventListener('mousemove', (e) => {
+          if (isScrubbing) {
+            updatePlayheadFromEvent(e);
+          }
+        });
+
+        window.addEventListener('mouseup', () => {
+          isScrubbing = false;
+        });
+
+        // Touch support for mobile cover/main screen
+        viewArrange.addEventListener('touchstart', (e) => {
+          if (e.target.closest('#arrange-tracks-container .cursor-pointer')) return;
+          isScrubbing = true;
+          updatePlayheadFromEvent(e);
+        }, { passive: true });
+
+        window.addEventListener('touchmove', (e) => {
+          if (isScrubbing) {
+            updatePlayheadFromEvent(e);
+          }
+        }, { passive: true });
+
+        window.addEventListener('touchend', () => {
+          isScrubbing = false;
+        });
+      }
+
+      // Add Track Button
+      const addTrackBtn = document.getElementById('btn-add-track');
+      if (addTrackBtn) {
+        addTrackBtn.addEventListener('click', () => {
+          const colors = ['#e65100', '#0288d1', '#2e7d32', '#fbc02d', '#8e24aa'];
+          const trackId = Date.now();
+          const newTrack = {
+            id: trackId,
+            name: `Track 0${tracks.length + 1}`,
+            color: colors[tracks.length % colors.length],
+            volume: 80,
+            pan: 0,
+            muted: false,
+            soloed: false,
+            arm: false,
+            type: 'synth'
+          };
+          tracks.push(newTrack);
+
+          // Add default clip for new track
+          clips.push({
+            id: trackId + 10,
+            trackId: trackId,
+            name: `${newTrack.name}_Item.wav`,
+            startPct: 15,
+            widthPct: 40
+          });
+
+          renderTracks();
+          renderArrangeLanes();
+          renderMixerStrips();
+        });
+      }
+
+      // View Tabs (Arrange vs Piano Roll vs Mixer)
+      const tabArrange = document.getElementById('tab-arrange');
+      const tabPiano = document.getElementById('tab-pianoroll');
+      const tabMixer = document.getElementById('tab-mixer');
+
+      const viewPiano = document.getElementById('view-pianoroll');
+      const viewMixer = document.getElementById('view-mixer');
+
+      if (tabArrange && tabPiano && tabMixer) {
+        tabArrange.addEventListener('click', () => {
+          switchTab(tabArrange, [tabPiano, tabMixer], viewArrange, [viewPiano, viewMixer]);
+        });
+        tabPiano.addEventListener('click', () => {
+          switchTab(tabPiano, [tabArrange, tabMixer], viewPiano, [viewArrange, viewMixer]);
+        });
+        tabMixer.addEventListener('click', () => {
+          switchTab(tabMixer, [tabArrange, tabPiano], viewMixer, [viewArrange, viewPiano]);
+        });
+      }
+
+      // Foldable Screen Mode Toggle
+      const screenModeBtn = document.getElementById('btn-screen-mode');
+      if (screenModeBtn) {
+        screenModeBtn.addEventListener('click', toggleScreenMode);
+      }
+    }
+
+    function switchTab(activeTab, inactiveTabs, activeView, inactiveViews) {
+      activeTab.className = 'px-3 py-1 rounded-t-lg bg-reaper-bg border-t border-x border-reaper-border text-xs font-bold text-amber-400 flex items-center gap-1.5';
+      inactiveTabs.forEach(t => {
+        t.className = 'px-3 py-1 rounded-t-lg bg-reaper-card text-xs font-semibold text-gray-400 hover:text-gray-200 flex items-center gap-1.5 transition';
+      });
+
+      activeView.classList.remove('hidden');
+      inactiveViews.forEach(v => v.classList.add('hidden'));
+    }
+
+    function updatePlayheadPosition(pct) {
+      const playhead = document.getElementById('playhead');
+      if (playhead) playhead.style.left = `${pct}%`;
+
+      // Update LCD display values based on cursor position
+      const sec = Math.floor((pct / 100) * 30);
+      const timeDisplay = document.getElementById('display-time');
+      if (timeDisplay) timeDisplay.textContent = `00:00:${sec < 10 ? '0' + sec : sec}`;
+
+      const measure = Math.floor((pct / 100) * 8) + 1;
+      const beatDisplay = document.getElementById('display-beat');
+      if (beatDisplay) beatDisplay.textContent = `00${measure}.1.00`;
+    }
+
+    // Toggle between Cover Screen Mode (compact) vs Full Main DAW Studio (expanded)
+    function toggleScreenMode() {
+      isCoverScreenMode = !isCoverScreenMode;
+      const tcpPanel = document.getElementById('tcp-panel');
+      const screenModeText = document.getElementById('screen-mode-text');
+      const screenModeIcon = document.getElementById('screen-mode-icon');
+
+      if (isCoverScreenMode) {
+        // Compact outer screen layout
+        if (tcpPanel) tcpPanel.classList.add('hidden');
+        if (screenModeText) screenModeText.textContent = 'Expanded Main Screen';
+        if (screenModeIcon) screenModeIcon.className = 'ph-bold ph-device-mobile-camera';
+      } else {
+        // Expanded inner screen layout
+        if (tcpPanel) tcpPanel.classList.remove('hidden');
+        if (screenModeText) screenModeText.textContent = 'Cover Screen Mode';
+        if (screenModeIcon) screenModeIcon.className = 'ph-bold ph-device-mobile';
+      }
+    }
+
+    function checkDeviceOrientation() {
+      // Auto-detect narrower screen width for foldable cover screen optimization
+      if (window.innerWidth < 450) {
+        isCoverScreenMode = true;
+        toggleScreenMode();
+      }
+    }
+
+    if (document.readyState === 'complete' || document.readyState === 'interactive') {
+      setTimeout(initDAW, 50);
+    } else {
+      window.addEventListener('load', initDAW);
+    }
+  </script>
+</body>
+</html>
